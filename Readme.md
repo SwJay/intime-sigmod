@@ -1,6 +1,6 @@
 # Readme
 
-This the code repository for paper ID 567.
+This the code repository for paper "InTime: Towards Performance Predictability In Byzantine Fault Tolerant Proof-of-Stake Consensus" in SIGMOD'25.
 
 
 ## Intime
