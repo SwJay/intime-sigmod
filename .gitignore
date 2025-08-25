@@ -1,0 +1,11 @@
+.DS_Store
+
+intime/res/
+intime/__pycache__/
+
+intime-devnet/devnet/
+intime-devnet/intime_logs/
+intime-devnet/res/
+intime-devnet/intime/__pycache__/
+intime-devnet/genesis.ssz
+intime-devnet/ar_results.txt

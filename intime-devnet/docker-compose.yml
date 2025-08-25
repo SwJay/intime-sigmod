@@ -1,0 +1,112 @@
+version: "3.9"
+services:
+  # Sets up the genesis configuration for the go-ethereum client from a JSON file.
+  geth-genesis:
+    image: "ethereum/client-go:v1.14.11"
+    command: --datadir=/execution init /execution/genesis.json
+    volumes:
+      - ${NODE_DIR}/execution:/execution
+      - ${NODE_DIR}/execution/genesis.json:/execution/genesis.json
+
+  geth:
+    image: "ethereum/client-go:v1.14.11"
+    command:
+      - --networkid=${CHAIN_ID:-32382}
+      - --http
+      - --http.api=eth,net,web3,admin
+      - --http.addr=0.0.0.0
+      - --http.port=${GETH_HTTP_PORT:-8000}
+      - --port=${GETH_P2P_PORT:-8400}
+      - --metrics.port=${GETH_METRICS_PORT:-8300}
+      - --ws
+      - --ws.api=eth,net,web3
+      - --ws.addr=0.0.0.0
+      - --ws.port=${GETH_WS_PORT:-8100}
+      - --authrpc.vhosts=*
+      - --authrpc.addr=0.0.0.0
+      - --authrpc.port=${GETH_AUTH_RPC_PORT:-8200}
+      - --authrpc.jwtsecret=/execution/jwtsecret
+      - --datadir=/execution
+      - --allow-insecure-unlock
+      - --unlock=${GETH_ACCOUNT},0x123463a4b065722e99115d6c222f267d9cabb524
+      - --password=/execution/geth_password.txt
+      - --bootnodes=${BOOTNODE_ENODE}
+      - --verbosity=3
+      - --syncmode=full
+      - --nat=${NAT}
+    volumes:
+      - ${NODE_DIR}/execution:/execution
+      - ${NODE_DIR}/execution/jwtsecret:/execution/jwtsecret
+      - ${NODE_DIR}/execution/geth_password.txt:/execution/geth_password.txt
+    ports:
+      - "${GETH_HTTP_PORT:-8000}:${GETH_HTTP_PORT:-8000}"
+      - "${GETH_WS_PORT:-8100}:${GETH_WS_PORT:-8100}"
+      - "${GETH_AUTH_RPC_PORT:-8200}:${GETH_AUTH_RPC_PORT:-8200}"
+      - "${GETH_METRICS_PORT:-8300}:${GETH_METRICS_PORT:-8300}"
+      - "${GETH_P2P_PORT:-8400}:${GETH_P2P_PORT:-8400}"
+    depends_on:
+      geth-genesis:
+        condition: service_completed_successfully
+  
+  beacon-chain:
+    image: "gcr.io/prysmaticlabs/prysm/beacon-chain:v4.1.1"
+    command:
+      - --datadir=/consensus/beacondata
+      - --min-sync-peers=${MIN_SYNC_PEERS:-0}
+      - --genesis-state=/consensus/genesis.ssz
+      - --bootstrap-node=${PRYSM_BOOTSTRAP_NODE}
+      - --interop-eth1data-votes
+      - --chain-config-file=/consensus/config.yml
+      - --contract-deployment-block=0
+      - --chain-id=${CHAIN_ID:-32382}
+      - --rpc-host=0.0.0.0
+      - --rpc-port=${PRYSM_BEACON_RPC_PORT:-4000}
+      - --grpc-gateway-host=0.0.0.0
+      - --grpc-gateway-port=${PRYSM_BEACON_GRPC_GATEWAY_PORT:-4100}
+      - --execution-endpoint=http://geth:${GETH_AUTH_RPC_PORT:-8200}
+      - --accept-terms-of-use
+      - --jwt-secret=/execution/jwtsecret
+      - --suggested-fee-recipient=0x123463a4b065722e99115d6c222f267d9cabb524
+      - --minimum-peers-per-subnet=0
+      - --p2p-tcp-port=${PRYSM_BEACON_P2P_TCP_PORT:-4200}
+      - --p2p-udp-port=${PRYSM_BEACON_P2P_UDP_PORT:-4300}
+      - --monitoring-port=${PRYSM_BEACON_MONITORING_PORT:-4400}
+      - --enable-debug-rpc-endpoints
+      - --verbosity=info
+      - --p2p-host-ip=${HOST_IP}
+    volumes:
+      - ${NODE_DIR}/consensus:/consensus
+      - ${NODE_DIR}/execution:/execution
+      - ${NODE_DIR}/execution/jwtsecret:/execution/jwtsecret
+    ports:
+      - "${PRYSM_BEACON_RPC_PORT:-4000}:${PRYSM_BEACON_RPC_PORT:-4000}"
+      - "${PRYSM_BEACON_GRPC_GATEWAY_PORT:-4100}:${PRYSM_BEACON_GRPC_GATEWAY_PORT:-4100}"
+      - "${PRYSM_BEACON_P2P_TCP_PORT:-4200}:${PRYSM_BEACON_P2P_TCP_PORT:-4200}"
+      - "${PRYSM_BEACON_P2P_UDP_PORT:-4300}:${PRYSM_BEACON_P2P_UDP_PORT:-4300}/udp"
+      - "${PRYSM_BEACON_MONITORING_PORT:-4400}:${PRYSM_BEACON_MONITORING_PORT:-4400}"
+    depends_on:
+      geth:
+        condition: service_started
+
+  validator:
+    image: "gcr.io/prysmaticlabs/prysm/validator:v4.1.1"
+    command:
+      - --beacon-rpc-provider=beacon-chain:${PRYSM_BEACON_RPC_PORT:-4000}
+      - --datadir=/consensus/validatordata
+      - --accept-terms-of-use
+      - --interop-num-validators=1
+      - --interop-start-index=${VALIDATOR_INDEX:-0}
+      - --chain-config-file=/consensus/config.yml
+      - --graffiti="node-${NODE_INDEX:-0}"
+      - --rpc-port=${PRYSM_VALIDATOR_RPC_PORT:-7000}
+      - --grpc-gateway-port=${PRYSM_VALIDATOR_GRPC_GATEWAY_PORT:-7100}
+      - --monitoring-port=${PRYSM_VALIDATOR_MONITORING_PORT:-7200}
+    volumes:
+      - ${NODE_DIR}/consensus:/consensus
+    ports:
+      - "${PRYSM_VALIDATOR_RPC_PORT:-7000}:${PRYSM_VALIDATOR_RPC_PORT:-7000}"
+      - "${PRYSM_VALIDATOR_GRPC_GATEWAY_PORT:-7100}:${PRYSM_VALIDATOR_GRPC_GATEWAY_PORT:-7100}"
+      - "${PRYSM_VALIDATOR_MONITORING_PORT:-7200}:${PRYSM_VALIDATOR_MONITORING_PORT:-7200}"
+    depends_on:
+      beacon-chain:
+        condition: service_started
